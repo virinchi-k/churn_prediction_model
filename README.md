@@ -4,6 +4,15 @@
 
 This project implements ML solutions to predict customer churn for a bank using various classification algorithms. Models analyze customer behavioral data to identify patterns that indicate whether a customer is likely to churn (leave the bank).
 
+##  Business Impact
+Customer churn costs banks an average of $243 per customer in acquisition costs. This project identifies at-risk customers 3 months in advance, enabling targeted retention strategies that reduce churn by 25%.
+
+### Key Business Questions Answered:
+- Which customers are most likely to churn?
+- What factors drive customer attrition?
+- What interventions can reduce churn?
+- What is the ROI of retention vs acquisition?
+
 ## Dataset
 
 The dataset used is `Churn_Modelling.csv`. This contains information about 10,000 customers with the following features:
