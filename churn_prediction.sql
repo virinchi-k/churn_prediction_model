@@ -4,18 +4,18 @@
 -- 
 -- What this file does: takes a 10,000 row bank customer dataset and answers
 -- the questions a retention team would actually ask, not just "who churned?"
--- My goal was to think like the analyst who has to present this to leadership
+-- Goal was to think like the analyst who has to present this to leadership
 -- on Monday morning, not just write queries that technically run.
 -- ===========================================================================
 
 -- ===========================================================================
 -- ASSUMPTIONS (so nobody has to guess where my numbers came from)
--- 1. $243 acquisition cost per customer - this is a commonly cited industry
+-- 1. $243 acquisition cost per customer - this is a generally cited industry
 --    average for retail banking customer acquisition. Used here to turn
 --    churn counts into dollars leadership actually cares about.
--- 2. 20% churn reduction target in Q9 - a conservative, achievable target
---    for a first-pass retention campaign. Not tied to the ML model's actual
---    lift yet, that gets validated once the model is in production.
+-- 2. The 20% target is a baseline assumption for this first-pass campaign. 
+--    The actual predictive probability and risk scoring are handled by the 
+--    Machine Learning model covered in the Python script of this project.
 -- 3. Risk score weights in Q3 (30/20/25/15/10) - inactivity gets the highest
 --    weight because an inactive member with no recent engagement is the
 --    single strongest churn signal in this dataset based on the EDA below.
@@ -25,10 +25,10 @@
 
 
 -- ===========================================================================
--- TABLE SETUP:
+-- TABLE SETUP
 -- Heads up: I loaded the data using the MySQL Workbench Import Wizard
--- instead of a manual BULK INSERT, so the schema below is jsut for reference,
--- not something you need to run.
+-- instead of a manual BULK INSERT, so the schema below is for reference,
+-- not something you need to run
 -- ===========================================================================
 
 -- DROP TABLE IF EXISTS churndata;
@@ -62,10 +62,8 @@ SELECT
     COUNT(*) - SUM(Exited)          AS TotalRetained,
     ROUND(AVG(Exited * 100.0), 2)   AS OverallChurnRate_Pct
 FROM ChurnData;
-
--- FINDING: TotalChurned = 2037;	TotalRetained = 7963;	OverallChurnRate_Pct = 20.37 
--- Run this first. If your churn rate isn't somewhere around 20%,
--- something went wrong in the import and the rest of this file is irrelevant.
+-- FINDING: Run this first. If your churn rate isn't somewhere around 20%,
+-- something went wrong in the import and the rest of this file is irrelevant
 
 
 -- EDA 2: Null check across every column
@@ -81,8 +79,8 @@ SELECT
     SUM(CASE WHEN EstimatedSalary IS NULL THEN 1 ELSE 0 END) AS Null_EstimatedSalary,
     SUM(CASE WHEN Exited          IS NULL THEN 1 ELSE 0 END) AS Null_Exited
 FROM ChurnData;
--- FINDING: Crystal clean dataset, zero nulls across the board. 
--- Kaggle datasets are rarely this polite, so I'm not complaining
+-- FINDING: Clean dataset, zero nulls across the board. Kaggle datasets are
+-- rarely this polite, so I'm not complaining :)
 
 
 -- EDA 3: Duplicate check on CustomerId
@@ -93,25 +91,24 @@ FROM ChurnData
 GROUP BY CustomerId
 HAVING COUNT(*) > 1;
 -- FINDING: No rows returned means no duplicate customers. Good, because
--- duplicate customers would have quietly inflated every churn rate below.
+-- duplicate customers would have quietly inflated every churn rate
 
 
 -- EDA 4: Quick profile of the average customer
 SELECT
-    ROUND(AVG(Age), 1)                 AS AvgAge,
-    ROUND(AVG(CreditScore), 1)         AS AvgCreditScore,
-    ROUND(AVG(Balance), 2)             AS AvgBalance,
-    ROUND(AVG(EstimatedSalary), 2)     AS AvgSalary,
-    ROUND(AVG(Tenure), 1)              AS AvgTenure,
-    ROUND(AVG(NumOfProducts), 2)       AS AvgProducts,
-    ROUND(AVG(IsActiveMember*100.0),2) AS ActiveMemberRate_Pct,
-    COUNT(DISTINCT Geography)          AS GeographiesCount,
-    MIN(CreditScore)                   AS MinCreditScore,
-    MAX(CreditScore)                   AS MaxCreditScore
+    ROUND(AVG(Age), 1)                  AS AvgAge,
+    ROUND(AVG(CreditScore), 1)          AS AvgCreditScore,
+    ROUND(AVG(Balance), 2)              AS AvgBalance,
+    ROUND(AVG(EstimatedSalary), 2)      AS AvgSalary,
+    ROUND(AVG(Tenure), 1)               AS AvgTenure,
+    ROUND(AVG(NumOfProducts), 2)        AS AvgProducts,
+    ROUND(AVG(IsActiveMember*100.0), 2) AS ActiveMemberRate_Pct,
+    COUNT(DISTINCT Geography)           AS GeographiesCount,
+    MIN(CreditScore)                    AS MinCreditScore,
+    MAX(CreditScore)                    AS MaxCreditScore
 FROM ChurnData;
 -- FINDING: This is your baseline. Every segment-level number in the
--- queries below should be compared back against these averages.
-
+-- queries below should be compared back against these averages
 
 select * from churndata limit 5;
 
@@ -119,13 +116,13 @@ select * from churndata limit 5;
 -- hard way once on a different project after truncating half a column
 SELECT MAX(LENGTH(surname)), MAX(LENGTH(geography)), MAX(LENGTH(gender)) from churndata;
 ALTER TABLE churndata
-MODIFY Surname VARCHAR (25),
+MODIFY  Surname VARCHAR (25),
 MODIFY  Geography VARCHAR (10),
 MODIFY  Gender VARCHAR (10);
-
+-- Doing this as these columns came in as "Text"
 
 -- ===========================================================================
--- NOW THE FUN PART: BUSINESS QUESTIONS
+-- Now the fun part: Business Questions!
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
@@ -156,16 +153,16 @@ SELECT
 FROM CreditTiers
 GROUP BY CreditTier
 ORDER BY CreditTier;
--- FINDING: [fill in once you run it] e.g. "Churn rate barely moves across
--- credit tiers, so credit score on its own is a weak churn signal. Good
--- news for collections, not very useful for retention targeting."
+-- FINDING: Churn rate barely moves across credit tiers (Range between 18%-22%) 
+-- so credit score on its own is a weak churn signal. Good
+-- news for collections teams, not very useful for retention targeting
 
 
 -- ---------------------------------------------------------------------------
 -- Q2: WHICH YEAR OF THE CUSTOMER RELATIONSHIP IS THE DANGER ZONE?
--- Why I'm asking: throwing retention budget at every tenure year equally
+-- Why this question: throwing retention budget at every tenure year equally
 -- is wasteful. I want to know exactly which year we're losing people so
--- intervention timing actually lines up with the risk.
+-- intervention timing actually lines up with the risk
 -- ---------------------------------------------------------------------------
 
 WITH TenureCohorts AS (
@@ -198,15 +195,15 @@ SELECT
     ROUND(CumulativeChurned * 100.0 / CumulativeTotal, 2) AS CumulativeChurnRate_Pct
 FROM WithRunning
 ORDER BY Tenure;
--- FINDING: [fill in] e.g. "Churn rate doesn't spike at year 1 like I
--- expected, it's flat across the whole tenure curve. Tells me this isn't
--- an onboarding problem, it's a persistent satisfaction issue."
+-- FINDING: Churn rate doesn't spike at year 1 like I expected (range between 20%-23%)
+-- it's flat across the whole tenure curve. Tells me this isn't
+-- an onboarding problem, it's a persistent satisfaction issue
 
 
 -- ---------------------------------------------------------------------------
 -- Q3: BUILDING A "WHO'S ABOUT TO LEAVE" SCORE BY HAND
 -- Why I'm asking: before the ML model exists, an analyst still needs to
--- hand the retention team a ranked list on Monday. This rules-based score
+-- hand the retention team a ranked list. This rules-based score
 -- is exactly that, a transparent, explainable stand-in the model formalizes
 -- later. Five behavioral flags, weighted by how strong each signal is.
 -- ---------------------------------------------------------------------------
@@ -257,8 +254,10 @@ SELECT
     Exited
 FROM Ranked
 ORDER BY CompositeRiskScore DESC;
--- FINDING: [fill in] This is the list. Whoever's in the "Critical" band
--- at the top is who the retention team calls first.
+-- FINDING: The Critical band is your Monday morning call list. These are
+-- inactive, single-product customers in the 45-60 age range, often in
+-- Germany, hitting all five risk flags simultaneously. The score was
+-- built to be explainable to a non-technical stakeholder, not just to run.
 
 
 -- ---------------------------------------------------------------------------
@@ -305,9 +304,10 @@ FROM Banded
 CROSS JOIN Baseline b
 GROUP BY RiskQuartile, b.OverallChurnRate
 ORDER BY RiskQuartile;
--- FINDING: [fill in] If the "Critical" band's churn rate is meaningfully
--- higher than the overall baseline, the score earns its keep. If it's
--- basically flat across all four bands, back to the drawing board on weights.
+-- FINDING: The score holds up. Critical band churns at 45.52% vs a 20.37% baseline, 
+-- a 25 point lift. Low band sits at just 6.76%. That's a 7 times difference top to bottom, 
+-- which means this rules-based score is already a usable prioritization tool before 
+-- the ML model even enters the picture
 
 
 -- ---------------------------------------------------------------------------
@@ -348,8 +348,13 @@ FROM BalancePercentiles
 WHERE BalanceQuartile = 1
   AND IsActiveMember  = 0
 ORDER BY Balance DESC;
--- FINDING: [fill in] This list should go straight to a relationship
--- manager, not a generic retention email blast.
+-- FINDING: 785 customers qualify here, all inactive, all sitting more than
+-- 20% above their geography's average balance, with balances ranging from
+-- $142K to $222K. Roughly 40% of them have already churned (Exited = 1),
+-- which means the other 60% are still here and reachable. These are not
+-- email-blast customers. Each one represents $140K to $220K in deposits
+-- at risk, and a relationship manager call is the right intervention,
+-- not a generic retention campaign.
 
 
 -- ---------------------------------------------------------------------------
@@ -397,10 +402,17 @@ SELECT
     ActiveRate_Pct
 FROM ProductGroups
 WHERE AvgSalary > 100000
-ORDER BY NumOfProducts, ChurnRate_Pct DESC;
--- FINDING: [fill in] Look for single-product segments with high churn
--- and high salary. That combo is the cross-sell sweet spot.
-
+ORDER BY NumOfProducts, ChurnRate_Pct DESC, AvgSalary DESC;
+-- FINDING: The cross-sell sweet spot is clear: single-product German females
+-- aged 45-60 churn at 76% with an avg salary of $101K, the highest churn
+-- rate of any high-salary single-product segment in the dataset. Right behind
+-- them are single-product German females 60+ at 62% churn. These two segments
+-- alone represent 222 customers who look financially identical to retained
+-- multi-product customers but are leaving at nearly 3 times the overall rate.
+-- The fix here is not a retention campaign, it is a product conversation.
+-- Also worth flagging: 3 and 4 product customers churn at alarmingly high
+-- rates (often 80-100%), but the segment sizes are tiny, so this is likely
+-- a product-fit issue for a small subset rather than a systemic problem.
 
 -- ---------------------------------------------------------------------------
 -- Q7: IS THIS A REGION PROBLEM, A GENDER PROBLEM, OR BOTH?
@@ -440,8 +452,10 @@ SELECT
     AvgCreditScore
 FROM WithRank
 ORDER BY ChurnRank;
--- FINDING: [fill in] e.g. "Germany shows up at the top regardless of
--- gender, so this looks like a market issue, not a demographic one."
+-- FINDING: Germany shows up at the top regardless of
+-- gender, so this looks like a market issue, not a demographic one.
+-- Post that, Gender plays a role as Female ranked highest irrespective of country.
+-- 
 
 
 -- ---------------------------------------------------------------------------
@@ -476,8 +490,15 @@ SELECT
 FROM GeoStats
 WHERE Balance > GeoAvgBalance + (2 * GeoStdDevBalance)
 ORDER BY ZScore DESC;
--- FINDING: [fill in] These customers are the outliers worth a manual
--- review before they show up in next quarter's churn report.
+-- FINDING: 100+ customers clear the 2 standard deviation threshold, with
+-- Z-scores ranging from 2.5 at the top down to 2.04 at the cutoff shown.
+-- Germany dominates this list, which makes sense given its already elevated
+-- churn rate. The most interesting flag here is the active/inactive split:
+-- several of these outlier-balance customers are inactive (IsActiveMember = 0)
+-- AND have already churned (Exited = 1), meaning the bank lost a customer
+-- sitting $60K to $90K above the regional average without catching it.
+-- Any customer on this list who is inactive but not yet churned should be
+-- cross-referenced with the Q5 VIP list and escalated immediately.
 
 
 -- ---------------------------------------------------------------------------
@@ -510,3 +531,36 @@ SELECT
     ROUND(ChurnedCustomers * 0.20 * 243, 2)             AS SavingsFromReduction_USD
 FROM ChurnMetrics
 ORDER BY ChurnRate_Pct DESC;
+-- FINDING: Germany is carrying the heaviest churn burden by a wide margin.
+-- At 32.44% churn, it loses nearly double the customers France and Spain do,
+-- with $97.9M in balances walking out the door and $197,802 in acquisition
+-- cost to replace them. A 20% reduction in German churn alone saves $39,560
+-- in replacement costs, more than France and Spain combined. If there is one
+-- market to fix first, the data is pretty clear about which one it is.
+
+
+-- ===========================================================================
+-- KEY TAKEAWAYS
+-- ===========================================================================
+-- 1. 785 high-value inactive customers are sitting above $140K in balance
+--    with zero engagement. 40% have already left. The remaining 60% are
+--    the single highest-priority retention list in this entire analysis,
+--    worth far more per contact than any segment-level campaign.
+-- 2. There is no "danger zone" year in the customer lifecycle. Churn stays
+--    flat from year 0 to year 10 (20% to 23% range), which rules out an
+--    onboarding problem and points to a persistent product or service issue
+--    that no single intervention window is going to fix.
+-- 3. The rules-based risk score from Q3 actually works. Critical band churns
+--    at 45.52% vs a 20.37% baseline, 7 times the rate of the Low band at
+--    6.76%. That's usable for retention targeting before the ML model
+--    even gets involved.
+-- 4. Germany is the problem market regardless of gender. Female customers
+--    are the higher-risk demographic across all three geographies, but
+--    geography outweighs gender as the stronger signal.
+-- 5. The total balance at risk across all three markets is $185.5M, with
+--    Germany accounting for 53% of it despite being only 25% of the customer
+--    base. A conservative 20% churn reduction campaign across all geographies
+--    saves $99,000 in acquisition costs alone, and that number does not
+--    even touch the balance retention upside. The Germany problem is not a
+--    churn problem, it is a revenue concentration risk.
+-- ===========================================================================
